@@ -117,7 +117,7 @@ const libDef = {
     "unknown-error": {
       severity: "error",
       messages: {
-        default: paramMessage`Can't generate Python client code from this TypeSpec. Please open an issue on https://github.com/microsoft/typespec'.${"detail"}`,
+        default: paramMessage`Can't generate Python client code from this TypeSpec. Please open an issue on https://github.com/microsoft/typespec'.${"stack"}`,
       },
     },
     "pyodide-flag-conflict": {
