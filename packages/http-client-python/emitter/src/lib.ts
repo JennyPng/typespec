@@ -117,7 +117,7 @@ const libDef = {
     "unknown-error": {
       severity: "error",
       messages: {
-        default: paramMessage`Can't generate Python client code from this TypeSpec. Please open an issue on https://github.com/microsoft/typespec'.${"stack"}`,
+        default: paramMessage`Can't generate Python client code from this TypeSpec. Please open an issue on https://github.com/microsoft/typespec'.${"detail"}`,
       },
     },
     "pyodide-flag-conflict": {
@@ -125,6 +125,13 @@ const libDef = {
       messages: {
         default:
           "Python is not installed. Please follow https://www.python.org/ to install Python or set 'use-pyodide' to true.",
+      },
+    },
+    "no-sdk-clients": {
+      severity: "error",
+      messages: {
+        default:
+          "The Python emitter did not find any SDK clients in this TypeSpec program. The current Python generator expects at least one client/service to generate code.",
       },
     },
     "invalid-paging-items": {
