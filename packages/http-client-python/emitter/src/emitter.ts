@@ -1,11 +1,11 @@
 import { createSdkContext } from "@azure-tools/typespec-client-generator-core";
-import { EmitContext, NoTarget, emitFile, joinPaths } from "@typespec/compiler";
+import { EmitContext, emitFile, joinPaths, NoTarget } from "@typespec/compiler";
 import { execSync } from "child_process";
 import fs from "fs";
 import jsyaml from "js-yaml";
 import os from "os";
 import path, { dirname } from "path";
-import { loadPyodide } from "pyodide";
+import { loadPyodide, PyodideInterface } from "pyodide";
 import { fileURLToPath } from "url";
 import { emitCodeModel } from "./code-model.js";
 import { saveCodeModelAsYaml } from "./external-process.js";
@@ -122,7 +122,7 @@ async def main():
 await main()`;
 
 async function runPyodideGeneration(
-  pyodide: any,
+  pyodide: PyodideInterface,
   outputFolder: string,
   yamlFile: string,
   commandArgs: Record<string, string>,
@@ -138,7 +138,7 @@ async function runPyodideGeneration(
 
 async function copyPyodideOutputToHost(
   context: EmitContext<PythonEmitterOptions>,
-  pyodide: any,
+  pyodide: PyodideInterface,
   memfsDir: string,
   relativeDir: string = "",
 ) {
