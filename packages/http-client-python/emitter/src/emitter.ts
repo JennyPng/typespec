@@ -14,6 +14,9 @@ import { runPython3 } from "./run-python3.js";
 import { disableGenerationMap, simpleTypesMap, typesMap } from "./types.js";
 import { getRootNamespace, md2Rst } from "./utils.js";
 
+const PYODIDE_VERSION = "0.26.2";
+const browserPygenWheelUrl = "/pygen-0.1.0-py3-none-any.whl"; // TODO this is temp
+
 function addDefaultOptions(sdkContext: PythonSdkContext) {
   const defaultOptions = {
     "package-version": "1.0.0b1",
@@ -324,14 +327,9 @@ async function onEmitMain(context: EmitContext<PythonEmitterOptions>) {
   }
 }
 
-// TODO these are both temp
-const pyodideVersion = "0.26.2";
-const browserPygenWheelUrl = "/pygen-0.1.0-py3-none-any.whl";
-
 async function setupPyodideCallBrowser() {
   const pyodide = await loadPyodide({
-    // TODO temporary for local testing
-    indexURL: `https://cdn.jsdelivr.net/pyodide/v${pyodideVersion}/full/`,
+    indexURL: `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`,
   });
 
   // use default MEMFS for browser, since NODEFS is not supported
