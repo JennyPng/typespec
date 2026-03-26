@@ -107,6 +107,32 @@ function cleanAllCache() {
   disableGenerationMap.clear();
 }
 
+const pyodideGenerationCode = `
+async def main():
+  import warnings
+  with warnings.catch_warnings():
+    from pygen import preprocess, codegen, black
+  preprocess.PreProcessPlugin(output_folder=outputFolder, tsp_file=yamlFile, **commandArgs).process()
+  codegen.CodeGenerator(output_folder=outputFolder, tsp_file=yamlFile, **commandArgs).process()
+  black.BlackScriptPlugin(output_folder=outputFolder, **commandArgs).process()
+
+await main()`;
+
+async function runPyodideGeneration(
+  pyodide: any,
+  outputFolder: string,
+  yamlFile: string,
+  commandArgs: Record<string, string>,
+) {
+  const globals = pyodide.toPy({
+    outputFolder,
+    yamlFile,
+    commandArgs,
+  });
+
+  await pyodide.runPythonAsync(pyodideGenerationCode, { globals });
+}
+
 async function copyPyodideOutputToHost(
   context: EmitContext<PythonEmitterOptions>,
   pyodide: any,
@@ -164,7 +190,7 @@ async function onEmitMain(context: EmitContext<PythonEmitterOptions>) {
   const yamlMap = emitCodeModel(sdkContext);
   const parsedYamlMap = walkThroughNodes(yamlMap);
 
-  // TODO is this right? python emitter requires an SDK client in the typespec
+  // Python emitter requires an SDK client in the TypeSpec
   if (sdkContext.sdkPackage.clients.length === 0) {
     reportDiagnostic(program, {
       code: "no-sdk-clients",
@@ -203,30 +229,12 @@ async function onEmitMain(context: EmitContext<PythonEmitterOptions>) {
     // Running in browser with Pyodide - fileURLToPath and other filesystem operations are browser-incompatible
     const pyodide = await setupPyodideCallBrowser();
 
-    // TODO this replaces saveCodeModelAsYaml
     const yamlFilePath = "/yaml/python-yaml-path.yaml";
     pyodide.FS.mkdirTree("/yaml");
     pyodide.FS.mkdirTree("/output");
     pyodide.FS.writeFile(yamlFilePath, jsyaml.dump(parsedYamlMap));
 
-    const globals = pyodide.toPy({
-      outputFolder: "/output",
-      yamlFile: yamlFilePath,
-      commandArgs,
-    });
-
-    // TODO this is duplicated
-    const pythonCode = `
-        async def main():
-          import warnings
-          with warnings.catch_warnings():
-            from pygen import preprocess, codegen, black
-          preprocess.PreProcessPlugin(output_folder=outputFolder, tsp_file=yamlFile, **commandArgs).process()
-          codegen.CodeGenerator(output_folder=outputFolder, tsp_file=yamlFile, **commandArgs).process()
-          black.BlackScriptPlugin(output_folder=outputFolder, **commandArgs).process()
-    
-        await main()`;
-    await pyodide.runPythonAsync(pythonCode, { globals });
+    await runPyodideGeneration(pyodide, "/output", yamlFilePath, commandArgs);
     await copyPyodideOutputToHost(context, pyodide, "/output");
   } else {
     const root = path.join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -258,22 +266,12 @@ async function onEmitMain(context: EmitContext<PythonEmitterOptions>) {
       // mount yaml file to pyodide
       pyodide.FS.mkdirTree("/yaml");
       pyodide.FS.mount(pyodide.FS.filesystems.NODEFS, { root: path.dirname(yamlPath) }, "/yaml");
-      const globals = pyodide.toPy({
-        outputFolder: "/output",
-        yamlFile: `/yaml/${path.basename(yamlPath)}`,
+      await runPyodideGeneration(
+        pyodide,
+        "/output",
+        `/yaml/${path.basename(yamlPath)}`,
         commandArgs,
-      });
-      const pythonCode = `
-          async def main():
-            import warnings
-            with warnings.catch_warnings():
-              from pygen import preprocess, codegen, black
-            preprocess.PreProcessPlugin(output_folder=outputFolder, tsp_file=yamlFile, **commandArgs).process()
-            codegen.CodeGenerator(output_folder=outputFolder, tsp_file=yamlFile, **commandArgs).process()
-            black.BlackScriptPlugin(output_folder=outputFolder, **commandArgs).process()
-      
-          await main()`;
-      await pyodide.runPythonAsync(pythonCode, { globals });
+      );
     } else {
       // here we run with native python
       let venvPath = path.join(root, "venv");
