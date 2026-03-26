@@ -58,4 +58,11 @@ await bundleAndUploadPackages({
       rootDir: pythonEmitterRoot,
     },
   ],
+  staticFiles: [
+    {
+      localPath: resolve(pythonEmitterRoot, "generator/dist/pygen-0.1.0-py3-none-any.whl"),
+      remotePath: "pygen-0.1.0-py3-none-any.whl",
+      contentType: "application/octet-stream",
+    },
+  ],
 });

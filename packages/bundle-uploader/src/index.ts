@@ -32,6 +32,15 @@ export interface BundleAndUploadPackagesOptions {
   }>;
 
   /**
+   * Static files to upload alongside the bundled packages.
+   */
+  staticFiles?: Array<{
+    localPath: string;
+    remotePath: string;
+    contentType?: string;
+  }>;
+
+  /**
    * Name of the index for those packages.
    */
   indexName: string;
@@ -65,6 +74,7 @@ export async function bundleAndUploadPackages({
   repoRoot,
   packages,
   extraPackages = [],
+  staticFiles = [],
   indexName,
   indexVersion,
 }: BundleAndUploadPackagesOptions) {
@@ -102,6 +112,25 @@ export async function bundleAndUploadPackages({
       }
     }
   }
+
+  // Upload static files
+  for (const staticFile of staticFiles) {
+    try {
+      await uploader.uploadStaticFile(
+        staticFile.localPath,
+        staticFile.remotePath,
+        staticFile.contentType,
+      );
+      logSuccess(`Static file ${staticFile.remotePath} uploaded.`);
+    } catch (error: any) {
+      if (error.code === "BlobAlreadyExists") {
+        logInfo(`Static file ${staticFile.remotePath} already exists.`);
+      } else {
+        throw error;
+      }
+    }
+  }
+
   logInfo(`Import map for ${indexVersion}:`, importMap);
   await uploader.updateIndex(indexName, {
     version: indexVersion,

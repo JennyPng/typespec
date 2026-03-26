@@ -75,6 +75,18 @@ export class TypeSpecBundledPackageUploader {
     });
   }
 
+  async uploadStaticFile(localPath: string, remotePath: string, contentType?: string) {
+    const blob = this.#container.getBlockBlobClient(normalizePath(remotePath));
+    await blob.uploadFile(localPath, {
+      blobHTTPHeaders: {
+        blobContentType: contentType,
+      },
+      conditions: {
+        ifNoneMatch: "*",
+      },
+    });
+  }
+
   async #uploadManifest(manifest: BundleManifest) {
     try {
       const blob = this.#container.getBlockBlobClient(
