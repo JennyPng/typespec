@@ -24,6 +24,14 @@ export interface BundleAndUploadPackagesOptions {
   packages: string[];
 
   /**
+   * Additional packages to bundle from arbitrary roots outside the pnpm workspace.
+   */
+  extraPackages?: Array<{
+    name: string;
+    rootDir: string;
+  }>;
+
+  /**
    * Name of the index for those packages.
    */
   indexName: string;
@@ -56,11 +64,21 @@ export async function getPackageVersion(repoRoot: string, pkgName: string) {
 export async function bundleAndUploadPackages({
   repoRoot,
   packages,
+  extraPackages = [],
   indexName,
   indexVersion,
 }: BundleAndUploadPackagesOptions) {
   const allProjects = await findWorkspacePackagesNoCheck(repoRoot);
-  const projects = allProjects.filter((x) => packages.includes(x.manifest.name!));
+  const workspaceProjects = allProjects.filter((x) => packages.includes(x.manifest.name!));
+  const projects = [
+    ...workspaceProjects,
+    ...extraPackages.map((pkg) => ({
+      manifest: {
+        name: pkg.name,
+      },
+      rootDir: pkg.rootDir,
+    })),
+  ];
   logInfo("Current index version:", indexVersion);
 
   const uploader = new TypeSpecBundledPackageUploader(new AzureCliCredential());

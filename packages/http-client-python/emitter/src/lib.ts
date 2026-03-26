@@ -134,6 +134,12 @@ const libDef = {
           "The Python emitter did not find any SDK clients in this TypeSpec program. The current Python generator expects at least one client/service to generate code.",
       },
     },
+    "browser-runtime-load-failed": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Failed to initialize the browser Python runtime.${"details"}`,
+      },
+    },
     "invalid-paging-items": {
       severity: "warning",
       messages: {
