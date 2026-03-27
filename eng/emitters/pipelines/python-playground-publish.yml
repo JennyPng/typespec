@@ -1,0 +1,59 @@
+# Python Playground Publish Pipeline
+# Bundles and uploads the Python emitter, its @azure-tools/* peer dependencies,
+# and the pygen wheel to Azure Blob Storage for playground use.
+
+trigger:
+  branches:
+    include:
+      - main
+      - release/*
+  paths:
+    include:
+      - packages/http-client-python
+
+pr: none
+
+pool:
+  name: $(LINUXPOOL)
+  image: $(LINUXVMIMAGE)
+  os: linux
+
+variables:
+  - template: /eng/tsp-core/pipelines/templates/variables/globals.yml@self
+  - name: PythonVersion
+    value: "3.11"
+
+jobs:
+  - job: publish_python_playground
+    displayName: Bundle and Upload Python Playground Packages
+
+    steps:
+      - template: /eng/tsp-core/pipelines/templates/install.yml
+
+      # Build only the bundler and bundle-uploader packages
+      - script: pnpm -r --filter "@typespec/bundler..." --filter "@typespec/bundle-uploader..." build
+        displayName: Build bundler and uploader packages
+
+      - task: UsePythonVersion@0
+        displayName: Install Python $(PythonVersion)
+        inputs:
+          versionSpec: $(PythonVersion)
+
+      - script: npm install
+        displayName: Install Python emitter dependencies
+        workingDirectory: packages/http-client-python
+
+      - script: npx tsc -p ./emitter/tsconfig.build.json
+        displayName: Compile Python emitter
+        workingDirectory: packages/http-client-python
+
+      - script: npx tsx ./eng/scripts/setup/build.ts
+        displayName: Build Pygen wheel
+        workingDirectory: packages/http-client-python
+
+      - task: AzureCLI@1
+        displayName: Upload Python playground packages to blob storage
+        inputs:
+          azureSubscription: "Azure SDK Engineering System"
+          scriptLocation: inlineScript
+          inlineScript: node ./eng/emitters/scripts/upload-python-playground-packages.js
