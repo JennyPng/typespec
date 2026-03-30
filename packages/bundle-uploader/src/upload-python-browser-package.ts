@@ -74,7 +74,7 @@ export async function uploadPythonPlaygroundPackages({
   const importMap: Record<string, string> = { ...existingIndex?.imports };
 
   // Bundle and upload the Python emitter itself
-  logInfo("\nBundling @typespec/http-client-python...");
+  logInfo("Bundling @typespec/http-client-python...");
   const emitterBundle = await createTypeSpecBundle(pythonEmitterDir);
   const emitterResult = await uploader.upload(emitterBundle);
   if (emitterResult.status === "uploaded") {
@@ -88,17 +88,22 @@ export async function uploadPythonPlaygroundPackages({
     }
   }
 
-  // Bundle and upload each @azure-tools/* peer dependency
-  for (const pkgName of azureToolsPackages) {
-    const pkgDir = resolve(pythonEmitterDir, "node_modules", pkgName);
-    logInfo(`\nBundling ${pkgName}...`);
-    const bundle = await createTypeSpecBundle(pkgDir);
-    const result = await uploader.upload(bundle);
-    if (result.status === "uploaded") {
-      logSuccess(`Uploaded ${pkgName}@${bundle.manifest.version}`);
-    } else {
-      logInfo(`${pkgName}@${bundle.manifest.version} already exists`);
-    }
+  // Bundle and upload each @azure-tools/* peer dependency in parallel
+  const azureToolsResults = await Promise.all(
+    azureToolsPackages.map(async (pkgName) => {
+      const pkgDir = resolve(pythonEmitterDir, "node_modules", pkgName);
+      logInfo(`Bundling ${pkgName}...`);
+      const bundle = await createTypeSpecBundle(pkgDir);
+      const result = await uploader.upload(bundle);
+      if (result.status === "uploaded") {
+        logSuccess(`Uploaded ${pkgName}@${bundle.manifest.version}`);
+      } else {
+        logInfo(`${pkgName}@${bundle.manifest.version} already exists`);
+      }
+      return { bundle, result };
+    }),
+  );
+  for (const { bundle, result } of azureToolsResults) {
     if (!existingIndex || result.status === "uploaded") {
       for (const [key, value] of Object.entries(result.imports)) {
         importMap[joinPosix(bundle.manifest.name, key)] = value;
@@ -107,7 +112,7 @@ export async function uploadPythonPlaygroundPackages({
   }
 
   // Upload the pygen wheel as a static binary asset
-  logInfo("\nUploading pygen wheel...");
+  logInfo("Uploading pygen wheel...");
   const wheel = await findPygenWheel(pythonEmitterDir);
   const wheelContent = await readFile(wheel.path);
   const wheelBlobPath = joinPosix("@typespec/http-client-python", indexVersion, wheel.filename);
@@ -131,7 +136,7 @@ export async function uploadPythonPlaygroundPackages({
       "pygen-wheel": wheelUrl,
     },
   };
-  logInfo("\nImport map:", JSON.stringify(index, null, 2));
+  logInfo("Import map:", JSON.stringify(index, null, 2));
   await uploader.updateIndex("python", index);
   logSuccess(`Updated index for python@${indexVersion}`);
 }
