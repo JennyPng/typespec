@@ -1,11 +1,9 @@
 import { AzureCliCredential } from "@azure/identity";
-import { BlobServiceClient } from "@azure/storage-blob";
 import { createTypeSpecBundle } from "@typespec/bundler";
 import { readFile, readdir } from "fs/promises";
 import { join, resolve } from "path";
 import { join as joinPosix } from "path/posix";
 import { parse } from "semver";
-import { pkgsContainer, storageAccountName } from "./constants.js";
 import { logInfo, logSuccess } from "./index.js";
 import { PackageIndex, TypeSpecBundledPackageUploader } from "./upload-browser-package.js";
 
@@ -50,43 +48,6 @@ async function findPygenWheel(pythonEmitterDir: string) {
     throw new Error(`No pygen wheel found in ${distDir}`);
   }
   return { filename: whlFile, path: join(distDir, whlFile) };
-}
-
-/** Upload the pygen wheel as a binary asset to blob storage. */
-async function uploadPygenWheel(
-  credential: AzureCliCredential,
-  pkgName: string,
-  pkgVersion: string,
-  wheel: { filename: string; path: string },
-): Promise<string> {
-  const blobSvc = new BlobServiceClient(
-    `https://${storageAccountName}.blob.core.windows.net`,
-    credential,
-  );
-  const container = blobSvc.getContainerClient(pkgsContainer);
-  const blobPath = joinPosix(pkgName, pkgVersion, wheel.filename);
-  const blob = container.getBlockBlobClient(blobPath);
-
-  const content = await readFile(wheel.path);
-  try {
-    await blob.uploadData(content, {
-      blobHTTPHeaders: {
-        blobContentType: "application/octet-stream",
-      },
-      conditions: {
-        ifNoneMatch: "*",
-      },
-    });
-    logSuccess(`Uploaded pygen wheel: ${blobPath}`);
-  } catch (e: any) {
-    if (e.code === "BlobAlreadyExists") {
-      logInfo(`Pygen wheel already exists: ${blobPath}`);
-    } else {
-      throw e;
-    }
-  }
-
-  return `${container.url}/${blobPath}`;
 }
 
 export async function uploadPythonPlaygroundPackages({
@@ -141,12 +102,19 @@ export async function uploadPythonPlaygroundPackages({
   // Upload the pygen wheel as a static binary asset
   logInfo("\nUploading pygen wheel...");
   const wheel = await findPygenWheel(pythonEmitterDir);
-  const wheelUrl = await uploadPygenWheel(
-    credential,
-    "@typespec/http-client-python",
-    pkgJson.version,
-    wheel,
+  const wheelContent = await readFile(wheel.path);
+  const wheelBlobPath = joinPosix("@typespec/http-client-python", pkgJson.version, wheel.filename);
+  const wheelResult = await uploader.uploadBinaryAsset(
+    wheelBlobPath,
+    wheelContent,
+    "application/octet-stream",
   );
+  if (wheelResult.status === "uploaded") {
+    logSuccess(`Uploaded pygen wheel: ${wheelBlobPath}`);
+  } else {
+    logInfo(`Pygen wheel already exists: ${wheelBlobPath}`);
+  }
+  const wheelUrl = wheelResult.url;
 
   // Write the index with imports + assets
   const index: PythonPackageIndex = {

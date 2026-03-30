@@ -75,6 +75,32 @@ export class TypeSpecBundledPackageUploader {
     });
   }
 
+  async uploadBinaryAsset(
+    blobPath: string,
+    content: Buffer,
+    contentType: string,
+  ): Promise<{ status: "uploaded" | "already-exists"; url: string }> {
+    const normalizedPath = normalizePath(blobPath);
+    const blob = this.#container.getBlockBlobClient(normalizedPath);
+    const url = `${this.#container.url}/${normalizedPath}`;
+    try {
+      await blob.uploadData(content, {
+        blobHTTPHeaders: {
+          blobContentType: contentType,
+        },
+        conditions: {
+          ifNoneMatch: "*",
+        },
+      });
+      return { status: "uploaded", url };
+    } catch (e: any) {
+      if (e.code === "BlobAlreadyExists") {
+        return { status: "already-exists", url };
+      }
+      throw e;
+    }
+  }
+
   async #uploadManifest(manifest: BundleManifest) {
     try {
       const blob = this.#container.getBlockBlobClient(
