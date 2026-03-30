@@ -103,7 +103,7 @@ export async function uploadPythonPlaygroundPackages({
   logInfo("\nUploading pygen wheel...");
   const wheel = await findPygenWheel(pythonEmitterDir);
   const wheelContent = await readFile(wheel.path);
-  const wheelBlobPath = joinPosix("@typespec/http-client-python", pkgJson.version, wheel.filename);
+  const wheelBlobPath = joinPosix("@typespec/http-client-python", indexVersion, wheel.filename);
   const wheelResult = await uploader.uploadBinaryAsset(
     wheelBlobPath,
     wheelContent,
