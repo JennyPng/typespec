@@ -15,8 +15,7 @@ interface PythonPackageIndex extends PackageIndex {
 
 /**
  * @azure-tools/* peer dependencies to bundle. These are loaded at runtime
- * when user TypeSpec input imports them, and they also form a transitive
- * peer dependency chain among themselves.
+ * when user TypeSpec input imports them.
  */
 const azureToolsPackages = [
   "@azure-tools/typespec-client-generator-core",
@@ -106,7 +105,7 @@ export async function uploadPythonPlaygroundPackages({
   const existingIndex = await uploader.getIndex("python", indexVersion);
   const importMap: Record<string, string> = { ...existingIndex?.imports };
 
-  // 1. Bundle and upload the Python emitter itself
+  // Bundle and upload the Python emitter itself
   logInfo("\nBundling @typespec/http-client-python...");
   const emitterBundle = await createTypeSpecBundle(pythonEmitterDir);
   const emitterResult = await uploader.upload(emitterBundle);

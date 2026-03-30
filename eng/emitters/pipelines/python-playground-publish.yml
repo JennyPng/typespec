@@ -13,47 +13,54 @@ trigger:
 
 pr: none
 
-pool:
-  name: $(LINUXPOOL)
-  image: $(LINUXVMIMAGE)
-  os: linux
+extends:
+  template: /eng/common/pipelines/templates/1es-redirect.yml
+  parameters:
+    variables:
+      - template: /eng/tsp-core/pipelines/templates/variables/globals.yml@self
+      - name: PythonVersion
+        value: "3.11"
 
-variables:
-  - template: /eng/tsp-core/pipelines/templates/variables/globals.yml@self
-  - name: PythonVersion
-    value: "3.11"
+    stages:
+      - stage: build
+        displayName: Build and Publish Python Playground Packages
 
-jobs:
-  - job: publish_python_playground
-    displayName: Bundle and Upload Python Playground Packages
+        pool:
+          name: $(WINDOWSPOOL)
+          image: $(WINDOWSVMIMAGE)
+          os: windows
 
-    steps:
-      - template: /eng/tsp-core/pipelines/templates/install.yml
+        jobs:
+          - job: build_and_publish_python
+            displayName: Bundle and Upload Python Playground Packages
 
-      # Build only the bundler and bundle-uploader packages
-      - script: pnpm -r --filter "@typespec/bundler..." --filter "@typespec/bundle-uploader..." build
-        displayName: Build bundler and uploader packages
+            steps:
+              - template: /eng/tsp-core/pipelines/templates/install.yml
 
-      - task: UsePythonVersion@0
-        displayName: Install Python $(PythonVersion)
-        inputs:
-          versionSpec: $(PythonVersion)
+              # Build only the bundler and bundle-uploader packages
+              - script: pnpm -r --filter "@typespec/bundler..." --filter "@typespec/bundle-uploader..." build
+                displayName: Build bundler and uploader packages
 
-      - script: npm install
-        displayName: Install Python emitter dependencies
-        workingDirectory: packages/http-client-python
+              - task: UsePythonVersion@0
+                displayName: Install Python $(PythonVersion)
+                inputs:
+                  versionSpec: $(PythonVersion)
 
-      - script: npx tsc -p ./emitter/tsconfig.build.json
-        displayName: Compile Python emitter
-        workingDirectory: packages/http-client-python
+              - script: npm install
+                displayName: Install Python emitter dependencies
+                workingDirectory: packages/http-client-python
 
-      - script: npx tsx ./eng/scripts/setup/build.ts
-        displayName: Build Pygen wheel
-        workingDirectory: packages/http-client-python
+              - script: npx tsc -p ./emitter/tsconfig.build.json
+                displayName: Compile Python emitter
+                workingDirectory: packages/http-client-python
 
-      - task: AzureCLI@1
-        displayName: Upload Python playground packages to blob storage
-        inputs:
-          azureSubscription: "Azure SDK Engineering System"
-          scriptLocation: inlineScript
-          inlineScript: node ./eng/emitters/scripts/upload-python-playground-packages.js
+              - script: npx tsx ./eng/scripts/setup/build.ts
+                displayName: Build Pygen wheel
+                workingDirectory: packages/http-client-python
+
+              - task: AzureCLI@1
+                displayName: Upload Python playground packages to blob storage
+                inputs:
+                  azureSubscription: "Azure SDK Engineering System"
+                  scriptLocation: inlineScript
+                  inlineScript: node ./eng/emitters/scripts/upload-python-playground-packages.js
