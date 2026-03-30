@@ -120,7 +120,7 @@ export async function uploadPythonPlaygroundPackages({
     }
   }
 
-  // 2. Bundle and upload each @azure-tools/* peer dependency
+  // Bundle and upload each @azure-tools/* peer dependency
   for (const pkgName of azureToolsPackages) {
     const pkgDir = resolve(pythonEmitterDir, "node_modules", pkgName);
     logInfo(`\nBundling ${pkgName}...`);
@@ -138,7 +138,7 @@ export async function uploadPythonPlaygroundPackages({
     }
   }
 
-  // 3. Upload the pygen wheel as a static binary asset
+  // Upload the pygen wheel as a static binary asset
   logInfo("\nUploading pygen wheel...");
   const wheel = await findPygenWheel(pythonEmitterDir);
   const wheelUrl = await uploadPygenWheel(
@@ -148,7 +148,7 @@ export async function uploadPythonPlaygroundPackages({
     wheel,
   );
 
-  // 4. Write the index with imports + assets
+  // Write the index with imports + assets
   const index: PythonPackageIndex = {
     version: indexVersion,
     imports: importMap,
