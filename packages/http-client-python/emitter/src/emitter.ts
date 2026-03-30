@@ -1,10 +1,11 @@
 import { createSdkContext } from "@azure-tools/typespec-client-generator-core";
-import { EmitContext, NoTarget } from "@typespec/compiler";
+import { EmitContext,emitFile, joinPaths, NoTarget } from "@typespec/compiler";
 import { execSync } from "child_process";
 import fs from "fs";
+import jsyaml from "js-yaml";
 import os from "os";
 import path, { dirname } from "path";
-import { loadPyodide } from "pyodide";
+import { loadPyodide, PyodideInterface } from "pyodide";
 import { fileURLToPath } from "url";
 import { emitCodeModel } from "./code-model.js";
 import { saveCodeModelAsYaml } from "./external-process.js";
@@ -12,6 +13,9 @@ import { PythonEmitterOptions, PythonSdkContext, reportDiagnostic } from "./lib.
 import { runPython3 } from "./run-python3.js";
 import { disableGenerationMap, simpleTypesMap, typesMap } from "./types.js";
 import { getRootNamespace, md2Rst } from "./utils.js";
+
+const PYODIDE_VERSION = "0.26.2";
+const browserPygenWheelUrl = "/pygen-0.1.0-py3-none-any.whl"; // TODO this is temp
 
 function addDefaultOptions(sdkContext: PythonSdkContext) {
   const defaultOptions = {
@@ -106,6 +110,59 @@ function cleanAllCache() {
   disableGenerationMap.clear();
 }
 
+const pyodideGenerationCode = `
+async def main():
+  import warnings
+  with warnings.catch_warnings():
+    from pygen import preprocess, codegen, black
+  preprocess.PreProcessPlugin(output_folder=outputFolder, tsp_file=yamlFile, **commandArgs).process()
+  codegen.CodeGenerator(output_folder=outputFolder, tsp_file=yamlFile, **commandArgs).process()
+  black.BlackScriptPlugin(output_folder=outputFolder, **commandArgs).process()
+await main()`;
+
+async function runPyodideGeneration(
+  pyodide: PyodideInterface,
+  outputFolder: string,
+  yamlFile: string,
+  commandArgs: Record<string, string>,
+) {
+  const globals = pyodide.toPy({
+    outputFolder,
+    yamlFile,
+    commandArgs,
+  });
+
+  await pyodide.runPythonAsync(pyodideGenerationCode, { globals });
+}
+
+async function copyPyodideOutputToHost(
+  context: EmitContext<PythonEmitterOptions>,
+  pyodide: PyodideInterface,
+  memfsDir: string,
+  relativeDir: string = "",
+) {
+  const entries = pyodide.FS.readdir(memfsDir).filter(
+    (entry: string) => entry !== "." && entry !== "..",
+  );
+
+  for (const entry of entries) {
+    const memfsPath = `${memfsDir}/${entry}`;
+    const relativePath = relativeDir ? `${relativeDir}/${entry}` : entry;
+    const stats = pyodide.FS.stat(memfsPath);
+
+    if (pyodide.FS.isDir(stats.mode)) {
+      await copyPyodideOutputToHost(context, pyodide, memfsPath, relativePath);
+      continue;
+    }
+
+    const content = pyodide.FS.readFile(memfsPath, { encoding: "utf8" });
+    await emitFile(context.program, {
+      path: joinPaths(context.emitterOutputDir, relativePath),
+      content,
+    });
+  }
+}
+
 export async function $onEmit(context: EmitContext<PythonEmitterOptions>) {
   try {
     await onEmitMain(context);
@@ -129,13 +186,18 @@ async function onEmitMain(context: EmitContext<PythonEmitterOptions>) {
 
   const program = context.program;
   const sdkContext = await createPythonSdkContext(context);
-  const root = path.join(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const outputDir = context.emitterOutputDir;
   addDefaultOptions(sdkContext);
   const yamlMap = emitCodeModel(sdkContext);
   const parsedYamlMap = walkThroughNodes(yamlMap);
-
-  const yamlPath = await saveCodeModelAsYaml("python-yaml-path", parsedYamlMap);
+  // Python emitter requires an SDK client in the TypeSpec
+  if (sdkContext.sdkPackage.clients.length === 0) {
+    reportDiagnostic(program, {
+      code: "no-sdk-clients",
+      target: NoTarget,
+    });
+    return;
+  }
   const resolvedOptions = sdkContext.emitContext.options;
   const commandArgs: Record<string, string> = {};
   if (resolvedOptions["packaging-files-config"]) {
@@ -162,97 +224,110 @@ async function onEmitMain(context: EmitContext<PythonEmitterOptions>) {
   commandArgs["from-typespec"] = "true";
   commandArgs["models-mode"] = (resolvedOptions as any)["models-mode"] ?? "dpg";
 
-  if (!program.compilerOptions.noEmit && !program.hasError()) {
-    // if not using pyodide and there's no venv, we try to create venv
-    if (!resolvedOptions["use-pyodide"] && !fs.existsSync(path.join(root, "venv"))) {
-      try {
-        await runPython3(path.join(root, "/eng/scripts/setup/install.py"));
-        await runPython3(path.join(root, "/eng/scripts/setup/prepare.py"));
-      } catch (error) {
-        // if the python env is not ready, we use pyodide instead
-        resolvedOptions["use-pyodide"] = true;
-      }
-    }
+  if (typeof window !== "undefined") {
+    // Running in browser with Pyodide - fileURLToPath and other filesystem operations are browser-incompatible
+    const pyodide = await setupPyodideCallBrowser();
 
-    if (resolvedOptions["use-pyodide"]) {
-      // here we run with pyodide
-      const pyodide = await setupPyodideCall(root);
-      // create the output folder if not exists
-      if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
-      }
-      // mount output folder to pyodide
-      pyodide.FS.mkdirTree("/output");
-      pyodide.FS.mount(pyodide.FS.filesystems.NODEFS, { root: outputDir }, "/output");
-      // mount yaml file to pyodide
-      pyodide.FS.mkdirTree("/yaml");
-      pyodide.FS.mount(pyodide.FS.filesystems.NODEFS, { root: path.dirname(yamlPath) }, "/yaml");
-      const globals = pyodide.toPy({
-        outputFolder: "/output",
-        yamlFile: `/yaml/${path.basename(yamlPath)}`,
-        commandArgs,
-      });
-      const pythonCode = `
-          async def main():
-            import warnings
-            with warnings.catch_warnings():
-              from pygen import preprocess, codegen, black
-            preprocess.PreProcessPlugin(output_folder=outputFolder, tsp_file=yamlFile, **commandArgs).process()
-            codegen.CodeGenerator(output_folder=outputFolder, tsp_file=yamlFile, **commandArgs).process()
-            black.BlackScriptPlugin(output_folder=outputFolder, **commandArgs).process()
-      
-          await main()`;
-      await pyodide.runPythonAsync(pythonCode, { globals });
-    } else {
-      // here we run with native python
-      let venvPath = path.join(root, "venv");
-      if (fs.existsSync(path.join(venvPath, "bin"))) {
-        venvPath = path.join(venvPath, "bin", "python");
-      } else if (fs.existsSync(path.join(venvPath, "Scripts"))) {
-        venvPath = path.join(venvPath, "Scripts", "python.exe");
+    const yamlFilePath = "/yaml/python-yaml-path.yaml";
+    pyodide.FS.mkdirTree("/yaml");
+    pyodide.FS.mkdirTree("/output");
+    pyodide.FS.writeFile(yamlFilePath, jsyaml.dump(parsedYamlMap));
+
+    await runPyodideGeneration(pyodide, "/output", yamlFilePath, commandArgs);
+    await copyPyodideOutputToHost(context, pyodide, "/output");
+  } else {
+    const root = path.join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+    const yamlPath = await saveCodeModelAsYaml("python-yaml-path", parsedYamlMap);
+
+    if (!program.compilerOptions.noEmit && !program.hasError()) {
+      // if not using pyodide and there's no venv, we try to create venv
+      if (!resolvedOptions["use-pyodide"] && !fs.existsSync(path.join(root, "venv"))) {
+        try {
+          await runPython3(path.join(root, "/eng/scripts/setup/install.py"));
+          await runPython3(path.join(root, "/eng/scripts/setup/prepare.py"));
+        } catch (error) {
+          // if the python env is not ready, we use pyodide instead
+          resolvedOptions["use-pyodide"] = true;
+        }
+
+      if (resolvedOptions["use-pyodide"]) {
+        // here we run with pyodide
+        const pyodide = await setupPyodideCall(root);
+        // create the output folder if not exists
+        if (!fs.existsSync(outputDir)) {
+          fs.mkdirSync(outputDir, { recursive: true });
+        }
+        // mount output folder to pyodide
+        pyodide.FS.mkdirTree("/output");
+        pyodide.FS.mount(pyodide.FS.filesystems.NODEFS, { root: outputDir }, "/output");
+        // mount yaml file to pyodide
+        pyodide.FS.mkdirTree("/yaml");
+        pyodide.FS.mount(pyodide.FS.filesystems.NODEFS, { root: path.dirname(yamlPath) }, "/yaml");
+        await runPyodideGeneration(pyodide, "/output", `/yaml/${path.basename(yamlPath)}`, commandArgs);
       } else {
-        reportDiagnostic(program, {
-          code: "pyodide-flag-conflict",
-          target: NoTarget,
-        });
-      }
-      commandArgs["output-folder"] = outputDir;
-      commandArgs["tsp-file"] = yamlPath;
-      const commandFlags = Object.entries(commandArgs)
-        .map(([key, value]) => `--${key}=${value}`)
-        .join(" ");
-      const command = `${venvPath} ${root}/eng/scripts/setup/run_tsp.py ${commandFlags}`;
-      execSync(command);
+        // here we run with native python
+        let venvPath = path.join(root, "venv");
+        if (fs.existsSync(path.join(venvPath, "bin"))) {
+          venvPath = path.join(venvPath, "bin", "python");
+        } else if (fs.existsSync(path.join(venvPath, "Scripts"))) {
+          venvPath = path.join(venvPath, "Scripts", "python.exe");
+        } else {
+          reportDiagnostic(program, {
+            code: "pyodide-flag-conflict",
+            target: NoTarget,
+          });
+        }
+        commandArgs["output-folder"] = outputDir;
+        commandArgs["tsp-file"] = yamlPath;
+        const commandFlags = Object.entries(commandArgs)
+          .map(([key, value]) => `--${key}=${value}`)
+          .join(" ");
+        const command = `${venvPath} ${root}/eng/scripts/setup/run_tsp.py ${commandFlags}`;
+        execSync(command);
 
-      const blackExcludeDirs = [
-        "__pycache__/",
-        "node_modules/",
-        "venv/",
-        "env/",
-        ".direnv",
-        ".eggs",
-        ".git",
-        ".hg",
-        ".tox",
-        ".venv",
-        ".eggs",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".vscode",
-        ".*_build/",
-        "/build/",
-        "dist",
-        ".nox",
-        ".svn",
-        "TempTypeSpecFiles/",
-      ];
-      const excludePattern = blackExcludeDirs.join("|");
-      execSync(
-        `${venvPath} -m black --line-length=120 --quiet --fast ${outputDir} --exclude "${excludePattern}"`,
-      );
-      checkForPylintIssues(outputDir, excludePattern);
-    }
-  }
+        const blackExcludeDirs = [
+          "__pycache__/",
+          "node_modules/",
+          "venv/",
+          "env/",
+          ".direnv",
+          ".eggs",
+          ".git",
+          ".hg",
+          ".tox",
+          ".venv",
+          ".eggs",
+          ".mypy_cache",
+          ".pytest_cache",
+          ".vscode",
+          ".*_build/",
+          "/build/",
+          "dist",
+          ".nox",
+          ".svn",
+          "TempTypeSpecFiles/",
+        ];
+        const excludePattern = blackExcludeDirs.join("|");
+        execSync(
+          `${venvPath} -m black --line-length=120 --quiet --fast ${outputDir} --exclude "${excludePattern}"`,
+        );
+        checkForPylintIssues(outputDir, excludePattern);
+      }
+  }}
+}
+
+async function setupPyodideCallBrowser() {
+  const pyodide = await loadPyodide({
+    indexURL: `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`,
+  });
+
+  // use default MEMFS for browser, since NODEFS is not supported
+  pyodide.FS.mkdirTree("/generator");
+  await pyodide.loadPackage("micropip");
+  const micropip = pyodide.pyimport("micropip");
+  await micropip.install(browserPygenWheelUrl);
+
+  return pyodide;
 }
 
 async function setupPyodideCall(root: string) {
