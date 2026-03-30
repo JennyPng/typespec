@@ -11,17 +11,13 @@ interface PythonPackageIndex extends PackageIndex {
   assets: Record<string, string>;
 }
 
-/**
- * @azure-tools/* peer dependencies to bundle. These are loaded at runtime
- * when user TypeSpec input imports them.
- */
-const azureToolsPackages = [
-  "@azure-tools/typespec-client-generator-core",
-  "@azure-tools/typespec-azure-core",
-  "@azure-tools/typespec-azure-resource-manager",
-  "@azure-tools/typespec-autorest",
-  "@azure-tools/typespec-azure-rulesets",
-];
+const azureToolsScope = "@azure-tools/";
+
+/** Extract @azure-tools/* peer dependency names from a package.json. */
+function getAzureToolsPeerDeps(pkgJson: { peerDependencies?: Record<string, string> }): string[] {
+  if (!pkgJson.peerDependencies) return [];
+  return Object.keys(pkgJson.peerDependencies).filter((name) => name.startsWith(azureToolsScope));
+}
 
 export interface UploadPythonPlaygroundPackagesOptions {
   /**
@@ -42,7 +38,17 @@ function getVersionFromPackageJson(pkgJson: { version: string }): string {
 /** Find the pygen wheel file by scanning generator/dist/pygen-*.whl */
 async function findPygenWheel(pythonEmitterDir: string) {
   const distDir = join(pythonEmitterDir, "generator/dist");
-  const files = await readdir(distDir);
+  let files: string[];
+  try {
+    files = await readdir(distDir);
+  } catch (e: any) {
+    if (e.code === "ENOENT") {
+      throw new Error(`Directory not found: ${distDir}. Did you build the Python emitter first?`, {
+        cause: e,
+      });
+    }
+    throw e;
+  }
   const whlFile = files.find((f) => f.startsWith("pygen-") && f.endsWith(".whl"));
   if (!whlFile) {
     throw new Error(`No pygen wheel found in ${distDir}`);
@@ -56,6 +62,7 @@ export async function uploadPythonPlaygroundPackages({
   const pythonEmitterDir = resolve(repoRoot, "packages/http-client-python");
   const pkgJson = JSON.parse(await readFile(join(pythonEmitterDir, "package.json"), "utf-8"));
   const indexVersion = getVersionFromPackageJson(pkgJson);
+  const azureToolsPackages = getAzureToolsPeerDeps(pkgJson);
   logInfo("Python playground index version:", indexVersion);
 
   const credential = new AzureCliCredential();
