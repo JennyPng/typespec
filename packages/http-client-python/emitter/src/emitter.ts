@@ -313,7 +313,8 @@ async function onEmitMain(context: EmitContext<PythonEmitterOptions>) {
         );
         checkForPylintIssues(outputDir, excludePattern);
       }
-  }}
+    }
+  }
 }
 
 async function setupPyodideCallBrowser() {
