@@ -3,7 +3,7 @@ import { findWorkspacePackagesNoCheck } from "@pnpm/workspace.find-packages";
 import { createTypeSpecBundle } from "@typespec/bundler";
 import { readFile } from "fs/promises";
 import { globby } from "globby";
-import { resolve } from "path";
+import { relative, resolve } from "path";
 import { join as joinUnix } from "path/posix";
 import pc from "picocolors";
 import { parse } from "semver";
@@ -105,7 +105,7 @@ async function uploadPlaygroundAssets(
         continue;
       }
       for (const filePath of matchedFiles) {
-        const relativePath = filePath.substring(packagePath.length + 1).replace(/\\/g, "/");
+        const relativePath = relative(packagePath, filePath).replace(/\\/g, "/");
         const blobPath = joinUnix(manifest.name, manifest.version, relativePath);
         const content = await readFile(filePath);
         const assetResult = await uploader.uploadBinaryAsset(blobPath, content, asset.contentType);
@@ -139,8 +139,11 @@ async function uploadPlaygroundAssets(
         for (const [key, value] of Object.entries(depResult.imports)) {
           importMap[joinUnix(depBundle.manifest.name, key)] = value;
         }
-      } catch (e: any) {
-        logInfo(pc.yellow(`⚠ Failed to bundle peer dependency ${depName}: ${e.message}`));
+      } catch (e: unknown) {
+        throw new Error(
+          `Failed to bundle peer dependency ${depName}: ${e instanceof Error ? e.message : e}`,
+          { cause: e },
+        );
       }
     }
   }
