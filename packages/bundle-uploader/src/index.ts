@@ -16,6 +16,47 @@ function logSuccess(message: string) {
   logInfo(pc.green(`✔ ${message}`));
 }
 
+export interface BundleAndUploadStandalonePackageOptions {
+  /**
+   * Absolute path to the package directory.
+   */
+  packagePath: string;
+}
+
+/**
+ * Bundle and upload a standalone package that is not part of the pnpm workspace.
+ * Uploads the bundle files and writes a `latest.json` under the package's blob directory
+ * (e.g. `@typespec/http-client-csharp/latest.json`).
+ */
+export async function bundleAndUploadStandalonePackage({
+  packagePath,
+}: BundleAndUploadStandalonePackageOptions) {
+  const bundle = await createTypeSpecBundle(packagePath);
+  const manifest = bundle.manifest;
+  logInfo(`Bundling standalone package: ${manifest.name}@${manifest.version}`);
+
+  const uploader = new TypeSpecBundledPackageUploader(new AzureCliCredential());
+  await uploader.createIfNotExists();
+
+  const result = await uploader.upload(bundle);
+  if (result.status === "uploaded") {
+    logSuccess(`Bundle for package ${manifest.name}@${manifest.version} uploaded.`);
+  } else {
+    logInfo(`Bundle for package ${manifest.name} already exists for version ${manifest.version}.`);
+  }
+
+  const importMap: Record<string, string> = {};
+  for (const [key, value] of Object.entries(result.imports)) {
+    importMap[joinUnix(manifest.name, key)] = value;
+  }
+
+  await uploader.updatePackageLatest(manifest.name, {
+    version: manifest.version,
+    imports: importMap,
+  });
+  logSuccess(`Updated ${manifest.name}/latest.json for version ${manifest.version}.`);
+}
+
 export interface BundleAndUploadPackagesOptions {
   repoRoot: string;
   /**
@@ -85,9 +126,12 @@ export async function bundleAndUploadPackages({
     }
   }
   logInfo(`Import map for ${indexVersion}:`, importMap);
-  await uploader.updateIndex(indexName, {
+  const index = {
     version: indexVersion,
     imports: importMap,
-  });
+  };
+  await uploader.updateIndex(indexName, index);
   logSuccess(`Updated index for version ${indexVersion}.`);
+  await uploader.updateLatestIndex(indexName, index);
+  logSuccess(`Updated latest index for version ${indexVersion}.`);
 }
