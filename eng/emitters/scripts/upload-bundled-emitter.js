@@ -10,6 +10,7 @@ if (!packageRelativePath) {
   process.exit(1);
 }
 
-const packagePath = resolve(repoRoot, packageRelativePath);
+// remove leading slash if exists, then resolve to absolute path
+const packagePath = resolve(repoRoot, packageRelativePath.replace(/^\//, ""));
 
 await bundleAndUploadStandalonePackage({ packagePath });
