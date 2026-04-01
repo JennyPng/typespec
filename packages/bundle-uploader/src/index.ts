@@ -7,12 +7,12 @@ import pc from "picocolors";
 import { parse } from "semver";
 import { TypeSpecBundledPackageUploader } from "./upload-browser-package.js";
 
-export function logInfo(...args: any[]) {
+function logInfo(...args: any[]) {
   // eslint-disable-next-line no-console
   console.log(...args);
 }
 
-export function logSuccess(message: string) {
+function logSuccess(message: string) {
   logInfo(pc.green(`✔ ${message}`));
 }
 
