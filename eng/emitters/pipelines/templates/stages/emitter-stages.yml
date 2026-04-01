@@ -338,9 +338,13 @@ stages:
                   ArtifactPath: $(buildArtifactsPath)
                   LanguageShortName: ${{ parameters.LanguageShortName }}
 
-              # TODO for python, i need to build the package, where should i slot that in?
-
               - ${{ if parameters.UploadPlaygroundBundle }}:
+                  - script: npm install
+                    displayName: Install emitter dependencies for playground bundle
+                    workingDirectory: $(Build.SourcesDirectory)/${{ parameters.PackagePath }}
+                  - script: npm run build
+                    displayName: Build emitter for playground bundle
+                    workingDirectory: $(Build.SourcesDirectory)/${{ parameters.PackagePath }}
                   - script: npm install -g pnpm
                     displayName: Install pnpm for playground bundle upload
                   - script: pnpm install --filter "@typespec/bundle-uploader..."
