@@ -24,23 +24,6 @@ export interface BundleAndUploadPackagesOptions {
   packages: string[];
 
   /**
-   * Additional packages to bundle from arbitrary roots outside the pnpm workspace.
-   */
-  extraPackages?: Array<{
-    name: string;
-    rootDir: string;
-  }>;
-
-  /**
-   * Static files to upload alongside the bundled packages.
-   */
-  staticFiles?: Array<{
-    localPath: string;
-    remotePath: string;
-    contentType?: string;
-  }>;
-
-  /**
    * Name of the index for those packages.
    */
   indexName: string;
@@ -73,22 +56,11 @@ export async function getPackageVersion(repoRoot: string, pkgName: string) {
 export async function bundleAndUploadPackages({
   repoRoot,
   packages,
-  extraPackages = [],
-  staticFiles = [],
   indexName,
   indexVersion,
 }: BundleAndUploadPackagesOptions) {
   const allProjects = await findWorkspacePackagesNoCheck(repoRoot);
-  const workspaceProjects = allProjects.filter((x) => packages.includes(x.manifest.name!));
-  const projects = [
-    ...workspaceProjects,
-    ...extraPackages.map((pkg) => ({
-      manifest: {
-        name: pkg.name,
-      },
-      rootDir: pkg.rootDir,
-    })),
-  ];
+  const projects = allProjects.filter((x) => packages.includes(x.manifest.name!));
   logInfo("Current index version:", indexVersion);
 
   const uploader = new TypeSpecBundledPackageUploader(new AzureCliCredential());
@@ -112,25 +84,6 @@ export async function bundleAndUploadPackages({
       }
     }
   }
-
-  // Upload static files
-  for (const staticFile of staticFiles) {
-    try {
-      await uploader.uploadStaticFile(
-        staticFile.localPath,
-        staticFile.remotePath,
-        staticFile.contentType,
-      );
-      logSuccess(`Static file ${staticFile.remotePath} uploaded.`);
-    } catch (error: any) {
-      if (error.code === "BlobAlreadyExists") {
-        logInfo(`Static file ${staticFile.remotePath} already exists.`);
-      } else {
-        throw error;
-      }
-    }
-  }
-
   logInfo(`Import map for ${indexVersion}:`, importMap);
   await uploader.updateIndex(indexName, {
     version: indexVersion,

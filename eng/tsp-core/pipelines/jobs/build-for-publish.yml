@@ -39,12 +39,6 @@ jobs:
           Contents: "*.vsix"
           TargetFolder: "$(Build.ArtifactStagingDirectory)/vs-extension"
 
-      - script: npm install --prefix packages/http-client-python
-        displayName: Install http-client-python dependencies
-
-      - script: npm run build --prefix packages/http-client-python
-        displayName: Build http-client-python wheel
-
       - task: AzureCLI@1
         displayName: "Publish bundled packages to package storage"
         inputs:
