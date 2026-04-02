@@ -73,7 +73,7 @@
     "assets": [
       {
         "path": "generator/dist/pygen-*.whl",
-        "contentType": "application/octet-stream"
+        "contentType": "application/zip"
       }
     ],
     "bundlePeerDependencies": [
