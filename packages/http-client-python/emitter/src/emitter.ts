@@ -13,9 +13,16 @@ import { PythonEmitterOptions, PythonSdkContext, reportDiagnostic } from "./lib.
 import { runPython3 } from "./run-python3.js";
 import { disableGenerationMap, simpleTypesMap, typesMap } from "./types.js";
 import { getRootNamespace, md2Rst } from "./utils.js";
+import pkgJson from "../../package.json" with { type: "json" };
 
 const PYODIDE_VERSION = "0.26.2";
-const browserPygenWheelUrl = "/pygen-0.1.0-py3-none-any.whl"; // TODO this is temp
+const PYGEN_WHEEL_FILENAME = "pygen-0.1.0-py3-none-any.whl";
+const BLOB_STORAGE_BASE_URL = "https://typespec.blob.core.windows.net/pkgs";
+const PACKAGE_NAME = "@typespec/http-client-python";
+
+function getBrowserPygenWheelUrl(): string {
+  return `${BLOB_STORAGE_BASE_URL}/${PACKAGE_NAME}/${pkgJson.version}/generator/dist/${PYGEN_WHEEL_FILENAME}`;
+}
 
 function addDefaultOptions(sdkContext: PythonSdkContext) {
   const defaultOptions = {
@@ -336,7 +343,7 @@ async function setupPyodideCallBrowser() {
   pyodide.FS.mkdirTree("/generator");
   await pyodide.loadPackage("micropip");
   const micropip = pyodide.pyimport("micropip");
-  await micropip.install(browserPygenWheelUrl);
+  await micropip.install(getBrowserPygenWheelUrl());
 
   return pyodide;
 }
@@ -370,7 +377,7 @@ async function setupPyodideCall(root: string) {
       );
       await pyodide.loadPackage("micropip");
       const micropip = pyodide.pyimport("micropip");
-      await micropip.install("emfs:/generator/dist/pygen-0.1.0-py3-none-any.whl");
+      await micropip.install(`emfs:/generator/dist/${PYGEN_WHEEL_FILENAME}`);
       fs.closeSync(fd);
       fs.unlinkSync(micropipLockPath);
       break;
