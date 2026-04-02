@@ -29,6 +29,19 @@ await buildSamples_experimental(packageRoot, resolve(__dirname, "dist/samples.ts
     compilerOptions: { linterRuleSet: { extends: ["@typespec/http/all"] } },
     description: "Use the REST framework for resource-oriented API design patterns.",
   },
+  "Python HTTP client": {
+    filename: "samples/python-client.tsp",
+    preferredEmitter: "@typespec/http-client-python",
+    compilerOptions: {
+      linterRuleSet: { extends: ["@typespec/http/all"] },
+      options: {
+        "@typespec/http-client-python": {
+          "use-pyodide": true,
+        },
+      },
+    },
+    description: "Generate a Python client for a small HTTP service.",
+  },
   "Protobuf Kiosk": {
     filename: "samples/kiosk.tsp",
     preferredEmitter: "@typespec/protobuf",
