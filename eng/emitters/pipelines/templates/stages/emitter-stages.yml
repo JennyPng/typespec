@@ -339,7 +339,7 @@ stages:
                   LanguageShortName: ${{ parameters.LanguageShortName }}
 
               - ${{ if parameters.UploadPlaygroundBundle }}:
-                  - script: npm install
+                  - script: npm ci
                     displayName: Install emitter dependencies for playground bundle
                     workingDirectory: $(Build.SourcesDirectory)/${{ parameters.PackagePath }}
                   - script: npm run build
