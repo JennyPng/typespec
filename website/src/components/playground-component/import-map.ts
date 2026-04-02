@@ -21,6 +21,7 @@ async function fetchAdditionalPackageImports(
       const url = `${pkgsBaseUrl}/${name}/latest.json`;
       const response = await fetch(url);
       if (!response.ok) {
+        // eslint-disable-next-line no-console
         console.warn(`Failed to load latest index for ${name}: ${response.status}`);
         return undefined;
       }
