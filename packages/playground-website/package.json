@@ -35,7 +35,7 @@
   "scripts": {
     "clean": "rimraf ./dist ./dist-dev ./temp ./samples/dist",
     "build-samples": "node ./samples/build.js",
-    "build": "pnpm build-samples && pnpm build:lib && vite build 2>&1",
+    "build": "node -e \"if(process.env.TYPESPEC_SKIP_WEBSITE_BUILD==='true'){console.log('Skipping playground-website build');process.exit(0)}else{process.exit(1)}\" || (pnpm build-samples && pnpm build:lib && vite build 2>&1)",
     "build:lib": "vite build --config vite.lib.config.ts",
     "preview": "pnpm build && vite preview",
     "start": "vite",
