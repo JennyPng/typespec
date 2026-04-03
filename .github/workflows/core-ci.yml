@@ -39,6 +39,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - uses: ./.github/actions/build-playground-emitters
+
       - name: Restore .NET dependencies
         run: dotnet restore
         working-directory: packages/typespec-vs
